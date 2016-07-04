@@ -1,0 +1,120 @@
+---
+title: "PeerAssessment2.Rmd"
+author: "Andreas Johansson"
+date: "6/30/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Report on major human and economic damage from storm events in the United States from 1950 to 2011
+
+##  Synopsis
+
+The U.S. National Oceanic and Atmospheric Administration's (NOAA) receives and tracks a number of paramaters from storm related events in the United States. This report summarises the storm events resulting in the most damage from a human perspective (direct fatalities and injuries) as well as the economic cost to the economy.
+
+##  Data Processing
+
+The storm data covering a period from 1950 to November 2011 was downloaded as a compressed (bz2 format) comma separated file and processed as below:
+
+```{r, echo=TRUE, cache=TRUE}
+file_url = "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+download.file(file_url, destfile = "StormData.csv.bz2", method = "curl")
+data <- read.csv("StormData.csv.bz2", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+```
+
+The data contains `r nrow(data)` events with `r dim(data)[2]` descriptive parameters. These parameters include the number of fatalites, the number of injuries and the property damage.
+
+Prepare for the data analysis by loading necessary packages:
+
+```{r, echo=TRUE}
+library(plyr)
+library(dplyr)
+library(reshape)
+library(ggplot2)
+```
+
+##  Results
+
+To allow the total cost for each type of event to the estimated the summed human and economic cost for each type of storm event was calculated as below (events that did not result in either fatalities, injuries or economic cost was removed):
+
+```{r, echo=TRUE}
+stats <- ddply(data, c("EVTYPE"), summarise,
+  fatal    = sum(FATALITIES, na.rm = TRUE),
+  injuries    = sum(INJURIES, na.rm = TRUE),
+  propdmg    = sum(PROPDMG, na.rm = TRUE))
+
+stats <- filter(stats, stats$fatal > 0 & stats$injuries > 0 & stats$propdmg > 0)
+
+stats_long <- melt(stats, id.vars = c("EVTYPE"))
+```
+
+The major damage from these `r nrow(data)` type of events is heavily skewed and mainly results from a small number of events as shown below:
+
+```{r}
+event_labels <- c('fatal' = "Number of fatalities", 'injuries' = "Number of injured", 'propdmg' = "Property damage in $1K")
+
+ggplot(stats_long, aes(EVTYPE, value, fill=variable, colour=variable)) +
+  geom_point() +  
+  facet_grid(variable ~ ., scales = "free", labeller = as_labeller(event_labels), switch = "y") +
+  xlab("Storm events which resulted in human or economic damage") +
+  ggtitle("Most damaging types of storm events") +
+  theme(legend.position="none",
+    panel.background = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x  = element_blank(),
+    axis.line.x = element_line(color="black"),
+    axis.line.y = element_line(color="black"),
+    strip.background = element_blank(),
+    strip.text = element_text(hjust=0.5)
+  )
+```
+
+This plot suggests that a small number (~ 10) of events results in a disproportional amount of damage. Filtering for the top ten number of events from each of these three categories will increase the resolution and help us understand which events are the major driving factors.
+
+```{r, echo=TRUE}
+stats <- stats[order(-stats$fatal),]
+top10_fatal <- stats[0:10,] 
+stats <- stats[order(-stats$injuries),]
+top10_injuries <- stats[0:10,] 
+stats <- stats[order(-stats$propdmg),]
+top10_propdmg <- stats[0:10,] 
+
+top10_all <- merge(top10_fatal, top10_injuries, all = TRUE)
+top10_all <- merge(top10_all, top10_propdmg, all = TRUE)
+
+top10_all_long <- melt(top10_all, id.vars = c("EVTYPE"))
+```
+
+The top 10 events for each of the three categories share most but not all events as can be seen in the previous plot. The final list of the most damaging events contains `r nrow(top10_all)` events in total and are shown in the barplot below:
+
+```{r, echo=TRUE}
+ggplot(data=top10_all_long, aes(x=EVTYPE, y=value, fill=variable)) +
+  geom_bar(stat="identity", position=position_dodge(), colour="black") +
+  facet_grid(variable ~ ., scales = "free", labeller = as_labeller(event_labels), switch = "y") +
+  ggtitle("Most damaging types of storm events") +
+  theme(legend.position="none",
+    panel.background = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x  = element_text(angle=30, size=8, vjust=0.5),
+    axis.line.x = element_line(color="black"),
+    axis.line.y = element_line(color="black"),
+    strip.background = element_blank(),
+    strip.text = element_text(hjust=0.5)
+  )
+```
+
+The plot clearly shows that the most damaging event (harmful to population health as well as having the greatest economic consequence) results from tornado damage.
+
+The overall most damaging events can be found below:
+
+```{r}
+top10_all
+```
+
+Tornado damage dominates in all three categories, followed by excessive heat and flash floods for fatalites, thunderstorms (TSTM) and floods for injuries and flash floods and thunderstorms for property damage.
+
+End of report.
